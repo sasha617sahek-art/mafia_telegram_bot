@@ -6,11 +6,17 @@ import os
 import random
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+)
 
+# ================== Настройки ==================
 TOKEN = os.environ.get("BOT_TOKEN")
-
 games = {}  # chat_id : game_data
+
 
 # ================== /start ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -18,6 +24,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Привет! 👋 Добро пожаловать в игру 'Бутылочка'!\n"
         "Чтобы начать игру в группе, напиши /game"
     )
+
 
 # ================== /game ==================
 async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -30,17 +37,35 @@ async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "players": [],  # [{"id":..., "name":...}]
         "alive": [],
         "state": "lobby",
-        "current": None
+        "current": None,
+        "round": 0,  # счётчик раундов
     }
 
     keyboard = [[InlineKeyboardButton("➕ Присоединиться", callback_data="join")]]
     await update.message.reply_text(
         "🎮 Новая игра! ⏳ 60 секунд на присоединение.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
     await asyncio.sleep(60)
+
+    game = games.get(chat_id)
+    if not game or game["state"] != "lobby":
+        return
+
+    if not game["players"]:
+        await context.bot.send_message(chat_id, "⏳ Время вышло! Никто не присоединился. Игра отменена.")
+        del games[chat_id]
+        return
+
+    players_text = "\n".join([f"- {p['name']}" for p in game["players"]])
+    await context.bot.send_message(
+        chat_id,
+        f"⏳ Время вышло!\n👥 Игроки: {len(game['players'])}\n\n{players_text}",
+    )
+
     await start_round(chat_id, context)
+
 
 # ================== Присоединение ==================
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -54,13 +79,15 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     game = games[chat_id]
     if user.id not in [p["id"] for p in game["players"]]:
-        name = user.first_name if user.first_name else f"@{user.username}"
+        name = user.first_name or f"@{user.username}"
         game["players"].append({"id": user.id, "name": name})
+
     players_text = "\n".join([f"- {p['name']}" for p in game["players"]])
     await query.edit_message_text(
         f"👥 Игроки: {len(game['players'])}\n\n{players_text}",
-        reply_markup=query.message.reply_markup
+        reply_markup=query.message.reply_markup,
     )
+
 
 # ================== Начало раунда ==================
 async def start_round(chat_id, context):
@@ -74,32 +101,48 @@ async def start_round(chat_id, context):
     game["state"] = "round"
     await next_turn(chat_id, context)
 
+
 # ================== Рандом выбирает два игрока ==================
 async def next_turn(chat_id, context):
     game = games[chat_id]
     alive_players = [p for p in game["players"] if p["id"] in game["alive"]]
 
-    if len(alive_players) <= 1:
+    # Если остался один игрок — победитель
+    if len(alive_players) == 1:
+        winner = alive_players[0]["name"]
+        await context.bot.send_message(chat_id, f"🏆 Победитель: {winner}")
+        del games[chat_id]
+        return
+
+    if len(alive_players) <= 0:
         await end_game(chat_id, context)
         return
+
+    # Увеличиваем номер раунда
+    game["round"] += 1
 
     p1, p2 = random.sample(alive_players, 2)
     game["current"] = {"p1": p1, "p2": p2, "action": None, "response": None}
 
-    # Кнопки для первого игрока
     kb_p1 = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔪 Убить", callback_data="kill")],
         [InlineKeyboardButton("💋 Поцеловать", callback_data="kiss")],
         [InlineKeyboardButton("🤗 Обнять", callback_data="hug")],
-        [InlineKeyboardButton("🥂 Выпить", callback_data="drink")]
+        [InlineKeyboardButton("🥂 Выпить", callback_data="drink")],
     ])
+
     try:
-        await context.bot.send_message(p1["id"], f"🎲 Ты выбран с {p2['name']}!\nВыбери действие:", reply_markup=kb_p1)
-    except:
+        await context.bot.send_message(
+            p1["id"],
+            f"🎲 Раунд {game['round']}!\nТы выбран с {p2['name']}!\nВыбери действие:",
+            reply_markup=kb_p1,
+        )
+    except Exception:
         pass
 
     await asyncio.sleep(15)
     await check_turn(chat_id, context)
+
 
 # ================== Обработка кнопок ==================
 async def action(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -113,29 +156,31 @@ async def action(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur = game["current"]
             if user_id == cur["p1"]["id"]:
                 cur["action"] = data
-                # Кнопки для второго игрока принять/отказать
                 kb_p2 = InlineKeyboardMarkup([
                     [InlineKeyboardButton("✅ Принять", callback_data="accept")],
-                    [InlineKeyboardButton("❌ Отказаться", callback_data="decline")]
+                    [InlineKeyboardButton("❌ Отказаться", callback_data="decline")],
                 ])
                 try:
-                    await context.bot.send_message(cur["p2"]["id"], f"{cur['p1']['name']} выбрал действие: {data}\nПрими или откажись?", reply_markup=kb_p2)
-                except:
+                    await context.bot.send_message(
+                        cur["p2"]["id"],
+                        f"{cur['p1']['name']} выбрал действие: {data}\nПрими или откажись?",
+                        reply_markup=kb_p2,
+                    )
+                except Exception:
                     pass
             elif user_id == cur["p2"]["id"]:
                 cur["response"] = data
+
 
 # ================== Проверка выполнения действия ==================
 async def check_turn(chat_id, context):
     game = games[chat_id]
     cur = game["current"]
 
-    p1 = cur["p1"]
-    p2 = cur["p2"]
-    action = cur["action"]
-    response = cur["response"]
+    p1, p2 = cur["p1"], cur["p2"]
+    action, response = cur["action"], cur["response"]
 
-    text = f"🎲 Ход: {p1['name']} и {p2['name']}\n"
+    text = f"🎲 Раунд {game['round']}: {p1['name']} и {p2['name']}\n"
 
     if response == "accept":
         if action == "kill":
@@ -153,20 +198,29 @@ async def check_turn(chat_id, context):
     else:
         text += "⏱ Время истекло, действие не выполнено.\n"
 
+    # Добавляем информацию о количестве и списке оставшихся игроков
+    alive_players = [p for p in game["players"] if p["id"] in game["alive"]]
+    players_text = "\n".join([f"- {p['name']}" for p in alive_players])
+    text += f"\n👥 Осталось игроков: {len(alive_players)}\n{players_text}"
+
     await context.bot.send_message(chat_id, text)
     await asyncio.sleep(2)
     await next_turn(chat_id, context)
+
 
 # ================== Конец игры ==================
 async def end_game(chat_id, context):
     game = games[chat_id]
     alive_players = [p for p in game["players"] if p["id"] in game["alive"]]
+
     if alive_players:
         winner_names = ", ".join([p["name"] for p in alive_players])
         await context.bot.send_message(chat_id, f"🏆 Победители: {winner_names}")
     else:
         await context.bot.send_message(chat_id, "Все игроки выбиты, нет победителей.")
+
     del games[chat_id]
+
 
 # ================== Main ==================
 def main():
@@ -176,6 +230,7 @@ def main():
     app.add_handler(CallbackQueryHandler(join, pattern="join"))
     app.add_handler(CallbackQueryHandler(action))
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
