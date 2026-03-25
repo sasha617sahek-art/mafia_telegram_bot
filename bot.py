@@ -1,7 +1,3 @@
-# ================================
-# Telegram "Бутылочка" бот
-# ================================
-
 import os
 import random
 import asyncio
@@ -13,7 +9,6 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ================== Настройки ==================
 TOKEN = os.environ.get("BOT_TOKEN")
 games = {}  # chat_id : game_data
 
@@ -34,11 +29,11 @@ async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     games[chat_id] = {
-        "players": [],  # [{"id":..., "name":...}]
+        "players": [],
         "alive": [],
         "state": "lobby",
         "current": None,
-        "round": 0,  # счётчик раундов
+        "round": 0,
     }
 
     keyboard = [[InlineKeyboardButton("➕ Присоединиться", callback_data="join")]]
@@ -49,19 +44,19 @@ async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await asyncio.sleep(60)
 
-    game = games.get(chat_id)
-    if not game or game["state"] != "lobby":
+    game_data = games.get(chat_id)
+    if not game_data or game_data["state"] != "lobby":
         return
 
-    if not game["players"]:
-        await context.bot.send_message(chat_id, "⏳ Время вышло! Никто не присоединился. Игра отменена.")
+    if not game_data["players"]:
+        await context.bot.send_message(chat_id, "⏳ Никто не присоединился. Игра отменена.")
         del games[chat_id]
         return
 
-    players_text = "\n".join([f"- {p['name']}" for p in game["players"]])
+    players_text = "\n".join([f"- {p['name']}" for p in game_data["players"]])
     await context.bot.send_message(
         chat_id,
-        f"⏳ Время вышло!\n👥 Игроки: {len(game['players'])}\n\n{players_text}",
+        f"⏳ Время вышло!\n👥 Игроки: {len(game_data['players'])}\n\n{players_text}",
     )
 
     await start_round(chat_id, context)
@@ -102,15 +97,16 @@ async def start_round(chat_id, context):
     await next_turn(chat_id, context)
 
 
-# ================== Рандом выбирает два игрока ==================
+# ================== Следующий ход ==================
 async def next_turn(chat_id, context):
-    game = games[chat_id]
+    game = games.get(chat_id)
+    if not game:
+        return
+
     alive_players = [p for p in game["players"] if p["id"] in game["alive"]]
 
-    # Если остался один игрок — победитель
     if len(alive_players) == 1:
-        winner = alive_players[0]["name"]
-        await context.bot.send_message(chat_id, f"🏆 Победитель: {winner}")
+        await context.bot.send_message(chat_id, f"🏆 Победитель: {alive_players[0]['name']}")
         del games[chat_id]
         return
 
@@ -118,9 +114,7 @@ async def next_turn(chat_id, context):
         await end_game(chat_id, context)
         return
 
-    # Увеличиваем номер раунда
     game["round"] += 1
-
     p1, p2 = random.sample(alive_players, 2)
     game["current"] = {"p1": p1, "p2": p2, "action": None, "response": None}
 
@@ -172,11 +166,13 @@ async def action(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cur["response"] = data
 
 
-# ================== Проверка выполнения действия ==================
+# ================== Проверка хода ==================
 async def check_turn(chat_id, context):
-    game = games[chat_id]
-    cur = game["current"]
+    game = games.get(chat_id)
+    if not game or not game.get("current"):
+        return
 
+    cur = game["current"]
     p1, p2 = cur["p1"], cur["p2"]
     action, response = cur["action"], cur["response"]
 
@@ -198,7 +194,6 @@ async def check_turn(chat_id, context):
     else:
         text += "⏱ Время истекло, действие не выполнено.\n"
 
-    # Добавляем информацию о количестве и списке оставшихся игроков
     alive_players = [p for p in game["players"] if p["id"] in game["alive"]]
     players_text = "\n".join([f"- {p['name']}" for p in alive_players])
     text += f"\n👥 Осталось игроков: {len(alive_players)}\n{players_text}"
@@ -210,9 +205,11 @@ async def check_turn(chat_id, context):
 
 # ================== Конец игры ==================
 async def end_game(chat_id, context):
-    game = games[chat_id]
-    alive_players = [p for p in game["players"] if p["id"] in game["alive"]]
+    game = games.get(chat_id)
+    if not game:
+        return
 
+    alive_players = [p for p in game["players"] if p["id"] in game["alive"]]
     if alive_players:
         winner_names = ", ".join([p["name"] for p in alive_players])
         await context.bot.send_message(chat_id, f"🏆 Победители: {winner_names}")
@@ -220,17 +217,3 @@ async def end_game(chat_id, context):
         await context.bot.send_message(chat_id, "Все игроки выбиты, нет победителей.")
 
     del games[chat_id]
-
-
-# ================== Main ==================
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("game", game))
-    app.add_handler(CallbackQueryHandler(join, pattern="join"))
-    app.add_handler(CallbackQueryHandler(action))
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
