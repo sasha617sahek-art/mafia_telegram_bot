@@ -225,3 +225,18 @@ async def day_phase(chat_id, context):
     await context.bot.send_message(chat_id, text)
 
     # После дня снимаем эффект
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    # Команда /game
+    app.add_handler(CommandHandler("game", game))
+    # Кнопка "Присоединиться"
+    app.add_handler(CallbackQueryHandler(join, pattern="join"))
+    # Действия ночью
+    app.add_handler(CallbackQueryHandler(action))
+
+    print("✅ Bot started and polling...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
