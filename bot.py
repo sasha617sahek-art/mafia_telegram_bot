@@ -14,7 +14,15 @@ ROLES = ["маньяк", "защитник", "наблюдатель", "везу
 # ===== Start Game =====
 async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    games[chat_id] = {"players": {}, "alive": [], "roles": {}, "state": "lobby", "night": 0, "muted": set(), "effects": {}}
+    games[chat_id] = {
+        "players": {},
+        "alive": [],
+        "roles": {},
+        "state": "lobby",
+        "night": 0,
+        "muted": set(),
+        "effects": {}
+    }
     keyboard = [[InlineKeyboardButton("➕ Присоединиться", callback_data="join")]]
 
     await update.message.reply_text(
@@ -216,5 +224,4 @@ async def day_phase(chat_id, context):
     text = f"☀️ День наступил!\n\n👥 Живые игроки:\n" + "\n".join([f"- {n}" for n in alive_names])
     await context.bot.send_message(chat_id, text)
 
-    # После дня снимаем эффект "молчания"
-    game["mut
+    # После дня снимаем эффект
