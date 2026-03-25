@@ -227,9 +227,4 @@ async def end_game(chat_id, context):
     else:
         await context.bot.send_message(chat_id, "Всі гравці вибиті, переможців немає.")
 
-    del games[chat_id]
-
-
-# ================== MAIN ==================
-def main():
-    app = ApplicationBuilder
+    del games
