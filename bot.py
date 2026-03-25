@@ -225,6 +225,4 @@ async def end_game(chat_id, context):
         winner_names = ", ".join([p["name"] for p in alive_players])
         await context.bot.send_message(chat_id, f"🏆 Переможці: {winner_names}")
     else:
-        await context.bot.send_message(chat_id, "Всі гравці вибиті, переможців немає.")
-
-    del games
+        await context.bot.send_message(chat_id, "Всі гравці вибиті, переможців нем
