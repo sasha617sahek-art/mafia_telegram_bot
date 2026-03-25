@@ -203,4 +203,18 @@ async def resolve_night(chat_id, context):
     await night_round(chat_id, context)
 
 # ===== Day phase =====
-async def day
+async def day_phase(chat_id, context):
+    game = games[chat_id]
+    alive_names = []
+    for pid in game["alive"]:
+        name = game["players"][pid]
+        if pid in game["muted"]:
+            alive_names.append(f"{name} 🤐 (молчит)")
+        else:
+            alive_names.append(name)
+
+    text = f"☀️ День наступил!\n\n👥 Живые игроки:\n" + "\n".join([f"- {n}" for n in alive_names])
+    await context.bot.send_message(chat_id, text)
+
+    # После дня снимаем эффект "молчания"
+    game["mut
