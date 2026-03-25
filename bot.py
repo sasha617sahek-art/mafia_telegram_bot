@@ -16,7 +16,7 @@ games = {}  # chat_id : game_data
 # ================== /start ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привіт 👋 Це гра 'Бутилочка'. Напиши /game щоб почати!"
+        "Привіт 👋 Це гра 'Бутилочка'. Напиши /game у групі щоб почати!"
     )
 
 
@@ -76,6 +76,18 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = user.first_name or f"@{user.username}"
         game["players"].append({"id": user.id, "name": name})
 
+        # повідомлення у приватному чаті
+        try:
+            await context.bot.send_message(
+                user.id,
+                f"✅ Ти приєднався до гри в групі {query.message.chat.title}!"
+            )
+        except Exception:
+            await query.message.reply_text(
+                f"{name}, спочатку відкрий бота приватно і натисни Start!"
+            )
+
+    # оновлення повідомлення у групі
     players_text = "\n".join([f"- {p['name']}" for p in game["players"]])
     await query.edit_message_text(
         f"👥 Гравці: {len(game['players'])}\n\n{players_text}",
@@ -220,16 +232,4 @@ async def end_game(chat_id, context):
 
 # ================== MAIN ==================
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("game", game))
-    app.add_handler(CallbackQueryHandler(join, pattern="join"))
-    app.add_handler(CallbackQueryHandler(action))
-
-    print("Бот запущено...")
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
+    app = ApplicationBuilder
