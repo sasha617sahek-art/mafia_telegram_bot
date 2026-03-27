@@ -1,87 +1,47 @@
-import os
-import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-)
+        "oil": 0,
+            "diesel": 0,
+            "gas92": 0,
+            "gas95": 0,
+            "money": 500,
+            "well_lvl": 1,
+            "equipment": {"diesel": None, "gas92": None, "gas95": None}
+        }
 
-TOKEN = os.environ.get("BOT_TOKEN")
-games = {}  # chat_id : список гравців
-
-
-# ================== /start ==================
+# ====== Команды ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привіт 👋 Це проста гра 'Бутилочка'. Напиши /game у групі щоб почати!")
+    user_id = update.effective_user.id
+    nick = update.effective_user.username or update.effective_user.first_name
+    init_player(user_id, nick)
+    await update.message.reply_text(f"Привет, {nick}! Добро пожаловать в нефтяной магнат.\n"
+                                    "Используй /status чтобы проверить свои ресурсы.")
 
-
-# ================== /game ==================
-async def game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    if chat_id in games:
-        await update.message.reply_text("Ігра вже йде!")
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in players:
+        await start(update, context)
         return
-
-    games[chat_id] = []
-    keyboard = [[InlineKeyboardButton("➕ Приєднатися", callback_data="join")]]
+    p = players[user_id]
+    eq = p['equipment']
     await update.message.reply_text(
-        "🎮 Нова гра! Натисни кнопку щоб приєднатися.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        f"🛢 Скважина: {p['well_lvl']} уровень\n"
+        f"Нефть: {p['oil']} баррелей\n"
+        f"Дизель: {p['diesel']} л\n"
+        f"Бензин 92: {p['gas92']} л\n"
+        f"Бензин 95: {p['gas95']} л\n"
+        f"Деньги: {p['money']} 💰\n"
+        f"Оборудование:\n"
+        f"Дизель: {eq['diesel']}\n"
+        f"Бензин 92: {eq['gas92']}\n"
+        f"Бензин 95: {eq['gas95']}"
     )
 
-
-# ================== Приєднання ==================
-async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat.id
-    user = query.from_user
-
-    if chat_id not in games:
+# ====== Добыча нефти ======
+async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in players:
+        await start(update, context)
         return
-
-    if user.id not in [p["id"] for p in games[chat_id]]:
-        name = user.first_name or f"@{user.username}"
-        games[chat_id].append({"id": user.id, "name": name})
-
-        # повідомлення у приватному чаті
-        try:
-            await context.bot.send_message(user.id, f"✅ Ти приєднався до гри в групі {query.message.chat.title}!")
-        except Exception:
-            await query.message.reply_text(f"{name}, спочатку відкрий бота приватно і натисни Start!")
-
-    players_text = "\n".join([f"- {p['name']}" for p in games[chat_id]])
-    await query.edit_message_text(
-        f"👥 Гравці: {len(games[chat_id])}\n\n{players_text}",
-        reply_markup=query.message.reply_markup,
-    )
-
-
-# ================== /spin ==================
-async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    if chat_id not in games or len(games[chat_id]) < 2:
-        await update.message.reply_text("Недостатньо гравців для гри.")
-        return
-
-    p1, p2 = random.sample(games[chat_id], 2)
-    await update.message.reply_text(f"🎲 Бутилочка вибрала: {p1['name']} ➡️ {p2['name']}")
-
-
-# ================== MAIN ==================
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("game", game))
-    app.add_handler(CommandHandler("spin", spin))
-    app.add_handler(CallbackQueryHandler(join, pattern="join"))
-
-    print("Бот запущено...")
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
+    p = players[user_id]
+    oil_gain = 10 + (p['well_lvl'] - 1) * 5
+    p['oil'] += oil_gain
+    await update.message.reply_text(f"Скважина добыла {oil_gain} баррелей нефти! Всего нефти: {p['o
